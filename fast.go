@@ -12,7 +12,7 @@ import (
 
 var _ *jlexer.Lexer
 
-var seenBrowsers []string
+var seenBrowsers = make(map[string]bool)
 var uniqueBrowsers int
 
 func easyjsonE6b4cdeDecodeCourseraOrgHw3Js(in *jlexer.Lexer, out *User) {
@@ -49,39 +49,11 @@ func easyjsonE6b4cdeDecodeCourseraOrgHw3Js(in *jlexer.Lexer, out *User) {
 				} else {
 					out.Browsers = (out.Browsers)[:0]
 				}
-				isAndroid := false
-				isMSIE := false
-				withAndroid := false
-				withMSIE := false
 				for !in.IsDelim(']') {
 					var v1 string
 					v1 = string(in.String())
 					out.Browsers = append(out.Browsers, v1)
-
-					if withAndroid = strings.Contains(v1, "Android"); withAndroid && !isAndroid {
-						isAndroid = true
-					}
-					if withMSIE = strings.Contains(v1, "MSIE"); withMSIE && !isMSIE {
-						isMSIE = true
-					}
-
-					if withAndroid || withMSIE {
-						notSeenBefore := true
-						for _, item := range seenBrowsers {
-							if item == v1 {
-								notSeenBefore = false
-							}
-						}
-						if notSeenBefore {
-							seenBrowsers = append(seenBrowsers, v1)
-							uniqueBrowsers++
-						}
-					}
-
 					in.WantComma()
-				}
-				if isAndroid && isMSIE {
-					out.AddToSearchRes = true
 				}
 				in.Delim(']')
 			}
@@ -116,14 +88,13 @@ func (v *User) UnmarshalJSON(data []byte) error {
 }
 
 type User struct {
-	Browsers       []string `json:"browsers"`
-	Company        string   `json:"company"`
-	Country        string   `json:"country"`
-	Email          string   `json:"email"`
-	Job            string   `json:"job"`
-	Name           string   `json:"name"`
-	Phone          string   `json:"phone"`
-	AddToSearchRes bool
+	Browsers []string `json:"browsers"`
+	Company  string   `json:"company"`
+	Country  string   `json:"country"`
+	Email    string   `json:"email"`
+	Job      string   `json:"job"`
+	Name     string   `json:"name"`
+	Phone    string   `json:"phone"`
 }
 
 func FastSearch(out io.Writer) {
@@ -142,11 +113,34 @@ func FastSearch(out io.Writer) {
 			panic(err)
 		}
 
-		if user.AddToSearchRes {
-			email := strings.Replace(user.Email, "@", " [at] ", -1)
-			str := strconv.Itoa(i)
-			foundUsers += "[" + str + "] " + user.Name + " <" + email + ">\n"
+		isAndroid := false
+		isMSIE := false
+		withAndroid := false
+		withMSIE := false
+		if len(user.Browsers) == 0 {
+			continue
 		}
+		for _, browserRaw := range user.Browsers {
+			if withAndroid = strings.Contains(browserRaw, "Android"); withAndroid && !isAndroid {
+				isAndroid = true
+			}
+			if withMSIE = strings.Contains(browserRaw, "MSIE"); withMSIE && !isMSIE {
+				isMSIE = true
+			}
+
+			if withAndroid || withMSIE {
+				if _, ok := seenBrowsers[browserRaw]; !ok {
+					seenBrowsers[browserRaw] = true
+				}
+			}
+		}
+		if !(isAndroid && isMSIE) {
+			continue
+		}
+
+		email := strings.Replace(user.Email, "@", " [at] ", -1)
+		str := strconv.Itoa(i)
+		foundUsers += "[" + str + "] " + user.Name + " <" + email + ">\n"
 
 	}
 	fmt.Fprintln(out, "found users:\n"+foundUsers)
