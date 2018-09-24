@@ -2,23 +2,18 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
-	jwriter "github.com/mailru/easyjson/jwriter"
 	"io"
 	"io/ioutil"
 	"strconv"
 	"strings"
 )
 
-var (
-	_ *json.RawMessage
-	_ *jlexer.Lexer
-	_ *jwriter.Writer
-	_ easyjson.Marshaler
-)
+var _ *jlexer.Lexer
+
+var seenBrowsers []string
+var uniqueBrowsers int
 
 func easyjsonE6b4cdeDecodeCourseraOrgHw3Js(in *jlexer.Lexer, out *User) {
 	isTopLevel := in.IsStart()
@@ -54,11 +49,39 @@ func easyjsonE6b4cdeDecodeCourseraOrgHw3Js(in *jlexer.Lexer, out *User) {
 				} else {
 					out.Browsers = (out.Browsers)[:0]
 				}
+				isAndroid := false
+				isMSIE := false
+				withAndroid := false
+				withMSIE := false
 				for !in.IsDelim(']') {
 					var v1 string
 					v1 = string(in.String())
 					out.Browsers = append(out.Browsers, v1)
+
+					if withAndroid = strings.Contains(v1, "Android"); withAndroid && !isAndroid {
+						isAndroid = true
+					}
+					if withMSIE = strings.Contains(v1, "MSIE"); withMSIE && !isMSIE {
+						isMSIE = true
+					}
+
+					if withAndroid || withMSIE {
+						notSeenBefore := true
+						for _, item := range seenBrowsers {
+							if item == v1 {
+								notSeenBefore = false
+							}
+						}
+						if notSeenBefore {
+							seenBrowsers = append(seenBrowsers, v1)
+							uniqueBrowsers++
+						}
+					}
+
 					in.WantComma()
+				}
+				if isAndroid && isMSIE {
+					out.AddToSearchRes = true
 				}
 				in.Delim(']')
 			}
@@ -93,29 +116,25 @@ func (v *User) UnmarshalJSON(data []byte) error {
 }
 
 type User struct {
-	Browsers []string `json:"browsers"`
-	Company  string   `json:"company"`
-	Country  string   `json:"country"`
-	Email    string   `json:"email"`
-	Job      string   `json:"job"`
-	Name     string   `json:"name"`
-	Phone    string   `json:"phone"`
+	Browsers       []string `json:"browsers"`
+	Company        string   `json:"company"`
+	Country        string   `json:"country"`
+	Email          string   `json:"email"`
+	Job            string   `json:"job"`
+	Name           string   `json:"name"`
+	Phone          string   `json:"phone"`
+	AddToSearchRes bool
 }
 
 func FastSearch(out io.Writer) {
 	const filePath string = "./data/users.txt"
-
+	var foundUsers string
 	fileContents, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		panic(err)
 	}
 
-	seenBrowsers := []string{}
-	var uniqueBrowsers int
-	foundUsers := ""
-
 	lines := bytes.Split(fileContents, []byte("\n"))
-
 	for i, line := range lines {
 		var user User
 		err := user.UnmarshalJSON(line)
@@ -123,54 +142,17 @@ func FastSearch(out io.Writer) {
 			panic(err)
 		}
 
-		isAndroid := false
-		isMSIE := false
-		if len(user.Browsers) == 0 {
-			continue
-		}
-		for _, browserRaw := range user.Browsers {
-			if strings.Contains(browserRaw, "Android") {
-				isAndroid = true
-				notSeenBefore := true
-				for _, item := range seenBrowsers {
-					if item == browserRaw {
-						notSeenBefore = false
-					}
-				}
-				if notSeenBefore {
-					seenBrowsers = append(seenBrowsers, browserRaw)
-					uniqueBrowsers++
-				}
-			}
-
-			if strings.Contains(browserRaw, "MSIE") {
-				isMSIE = true
-				notSeenBefore := true
-				for _, item := range seenBrowsers {
-					if item == browserRaw {
-						notSeenBefore = false
-					}
-				}
-				if notSeenBefore {
-					seenBrowsers = append(seenBrowsers, browserRaw)
-					uniqueBrowsers++
-				}
-			}
-		}
-		if !(isAndroid && isMSIE) {
-			continue
+		if user.AddToSearchRes {
+			email := strings.Replace(user.Email, "@", " [at] ", -1)
+			str := strconv.Itoa(i)
+			foundUsers += "[" + str + "] " + user.Name + " <" + email + ">\n"
 		}
 
-		email := strings.Replace(user.Email, "@", " [at] ", -1)
-		str := strconv.Itoa(i)
-		foundUsers += "[" + str + "] " + user.Name + " <" + email + ">\n"
 	}
-
 	fmt.Fprintln(out, "found users:\n"+foundUsers)
 	fmt.Fprintln(out, "Total unique browsers", len(seenBrowsers))
 }
 
 func main() {
-	fastOut := new(bytes.Buffer)
-	FastSearch(fastOut)
+
 }
